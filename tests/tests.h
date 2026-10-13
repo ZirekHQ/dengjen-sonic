@@ -22,6 +22,10 @@ int sonicTestChordPitchChangesOutput(void);
 int sonicTestChordPitchExtremeRatioDoesNotOverflow(void);
 int sonicTestRepeatedPitchChangesDontDesyncRatePosition(void);
 int sonicTestSlowdownFlushProducesExpectedDuration(void);
+int sonicTestChordPitchPreservesConstantSignal(void);
+int sonicTestChordPitchAppliesRate(void);
+int sonicTestSetPitchRejectsNaN(void);
+int sonicTestChordPitchReturnToUnityDrainsBuffer(void);
 
 #ifdef __cplusplus
 }

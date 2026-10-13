@@ -25,6 +25,10 @@ int main(int argc, char** argv) {
   assert(sonicTestChordPitchExtremeRatioDoesNotOverflow());
   assert(sonicTestRepeatedPitchChangesDontDesyncRatePosition());
   assert(sonicTestSlowdownFlushProducesExpectedDuration());
+  assert(sonicTestChordPitchPreservesConstantSignal());
+  assert(sonicTestChordPitchAppliesRate());
+  assert(sonicTestSetPitchRejectsNaN());
+  assert(sonicTestChordPitchReturnToUnityDrainsBuffer());
   printf("All tests passed.\n");
   return 0;
 }
