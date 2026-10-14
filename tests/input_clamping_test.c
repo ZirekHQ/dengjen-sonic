@@ -90,7 +90,9 @@ static void processSomeSamples(sonicStream stream, const short* samples, int num
   int samplesRead;
 
   /* Write all at once. */
-  assert(sonicWriteShortToStream(stream, samples, numSamples));
+  int written = sonicWriteShortToStream(stream, samples, numSamples);
+
+  assert(written);
   while ((samplesRead = sonicReadShortFromStream(stream, readBuf, READ_BUF_LEN)) != 0);
 }
 

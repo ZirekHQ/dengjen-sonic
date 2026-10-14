@@ -10,27 +10,35 @@
 
 #include "tests.h"
 
-#include <assert.h>
 #include <stdio.h>
 
+/* Unlike assert(), stays active under -DNDEBUG. */
+#define CHECK(test)                              \
+  do {                                           \
+    if (!(test)) {                               \
+      fprintf(stderr, "FAILED: %s\n", #test);    \
+      return 1;                                  \
+    }                                            \
+  } while (0)
+
 int main(int argc, char** argv) {
-  assert(sonicTestInputClamping());
-  assert(sonicTestInputsDontCrash());
-  assert(sonicTestStreamCreation());
-  assert(sonicTestParameters());
-  assert(sonicTestFlush());
-  assert(sonicTestSimpleProcessing());
-  assert(sonicTestWaveRejectsZeroChannels());
-  assert(sonicTestChordPitchChangesOutput());
-  assert(sonicTestChordPitchExtremeRatioDoesNotOverflow());
-  assert(sonicTestRepeatedPitchChangesDontDesyncRatePosition());
-  assert(sonicTestSlowdownFlushProducesExpectedDuration());
-  assert(sonicTestChordPitchPreservesConstantSignal());
-  assert(sonicTestChordPitchAppliesRate());
-  assert(sonicTestSetPitchRejectsNaN());
-  assert(sonicTestChordPitchReturnToUnityDrainsBuffer());
-  assert(sonicTestSetSampleRateDropsBufferedSamples());
-  assert(sonicTestExtremeRatiosTerminate());
+  CHECK(sonicTestInputClamping());
+  CHECK(sonicTestInputsDontCrash());
+  CHECK(sonicTestStreamCreation());
+  CHECK(sonicTestParameters());
+  CHECK(sonicTestFlush());
+  CHECK(sonicTestSimpleProcessing());
+  CHECK(sonicTestWaveRejectsZeroChannels());
+  CHECK(sonicTestChordPitchChangesOutput());
+  CHECK(sonicTestChordPitchExtremeRatioDoesNotOverflow());
+  CHECK(sonicTestRepeatedPitchChangesDontDesyncRatePosition());
+  CHECK(sonicTestSlowdownFlushProducesExpectedDuration());
+  CHECK(sonicTestChordPitchPreservesConstantSignal());
+  CHECK(sonicTestChordPitchAppliesRate());
+  CHECK(sonicTestSetPitchRejectsNaN());
+  CHECK(sonicTestChordPitchReturnToUnityDrainsBuffer());
+  CHECK(sonicTestSetSampleRateDropsBufferedSamples());
+  CHECK(sonicTestExtremeRatiosTerminate());
   printf("All tests passed.\n");
   return 0;
 }

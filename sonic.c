@@ -145,7 +145,7 @@ static void sonicFree(void* p) { free(p); }
    time when using SONIC_NO_MALLOC mode.  Calls to realloc move the data to the
    end of memoryBuffer.  Calls to free reset the memory buffer to empty. */
 static void*
-    memoryBufferAligned[(SONIC_MAX_MEMORY + sizeof(void) - 1) / sizeof(void*)];
+    memoryBufferAligned[(SONIC_MAX_MEMORY + sizeof(void*) - 1) / sizeof(void*)];
 static unsigned char* memoryBuffer = (unsigned char*)memoryBufferAligned;
 static int memoryBufferPos = 0;
 
@@ -504,18 +504,22 @@ void sonicSetNumChannels(sonicStream stream, int numChannels) {
 /* Enlarge the output buffer if needed. */
 static int enlargeOutputBufferIfNeeded(sonicStream stream, int numSamples) {
   int outputBufferSize = stream->outputBufferSize;
+  int newSize;
+  short* newBuffer;
 
   if (stream->outputBuffer == NULL) {
     return 0;
   }
   if (stream->numOutputSamples + numSamples > outputBufferSize) {
-    stream->outputBufferSize += (outputBufferSize >> 1) + numSamples;
-    stream->outputBuffer = (short*)sonicRealloc(
-        stream->outputBuffer, outputBufferSize, stream->outputBufferSize,
-        sizeof(short) * stream->numChannels);
-    if (stream->outputBuffer == NULL) {
+    newSize = outputBufferSize + (outputBufferSize >> 1) + numSamples;
+    newBuffer = (short*)sonicRealloc(stream->outputBuffer, outputBufferSize,
+                                     newSize,
+                                     sizeof(short) * stream->numChannels);
+    if (newBuffer == NULL) {
       return 0;
     }
+    stream->outputBuffer = newBuffer;
+    stream->outputBufferSize = newSize;
   }
   return 1;
 }
@@ -523,18 +527,22 @@ static int enlargeOutputBufferIfNeeded(sonicStream stream, int numSamples) {
 /* Enlarge the input buffer if needed. */
 static int enlargeInputBufferIfNeeded(sonicStream stream, int numSamples) {
   int inputBufferSize = stream->inputBufferSize;
+  int newSize;
+  short* newBuffer;
 
   if (stream->inputBuffer == NULL) {
     return 0;
   }
   if (stream->numInputSamples + numSamples > inputBufferSize) {
-    stream->inputBufferSize += (inputBufferSize >> 1) + numSamples;
-    stream->inputBuffer = (short*)sonicRealloc(
-        stream->inputBuffer, inputBufferSize, stream->inputBufferSize,
-        sizeof(short) * stream->numChannels);
-    if (stream->inputBuffer == NULL) {
+    newSize = inputBufferSize + (inputBufferSize >> 1) + numSamples;
+    newBuffer = (short*)sonicRealloc(stream->inputBuffer, inputBufferSize,
+                                     newSize,
+                                     sizeof(short) * stream->numChannels);
+    if (newBuffer == NULL) {
       return 0;
     }
+    stream->inputBuffer = newBuffer;
+    stream->inputBufferSize = newSize;
   }
   return 1;
 }
@@ -976,15 +984,18 @@ static int moveNewSamplesToPitchBuffer(sonicStream stream,
   int numSamples = stream->numOutputSamples - originalNumOutputSamples;
   int numChannels = stream->numChannels;
   int pitchBufferSize = stream->pitchBufferSize;
+  int newSize;
+  short* newBuffer;
 
   if (stream->numPitchSamples + numSamples > pitchBufferSize) {
-    stream->pitchBufferSize += (pitchBufferSize >> 1) + numSamples;
-    stream->pitchBuffer = (short*)sonicRealloc(
-        stream->pitchBuffer, pitchBufferSize, stream->pitchBufferSize,
-        sizeof(short) * numChannels);
-    if (stream->pitchBuffer == NULL) {
+    newSize = pitchBufferSize + (pitchBufferSize >> 1) + numSamples;
+    newBuffer = (short*)sonicRealloc(stream->pitchBuffer, pitchBufferSize,
+                                     newSize, sizeof(short) * numChannels);
+    if (newBuffer == NULL) {
       return 0;
     }
+    stream->pitchBuffer = newBuffer;
+    stream->pitchBufferSize = newSize;
   }
   memcpy(stream->pitchBuffer + stream->numPitchSamples * numChannels,
          stream->outputBuffer + originalNumOutputSamples * numChannels,

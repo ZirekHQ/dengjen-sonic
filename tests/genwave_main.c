@@ -14,8 +14,11 @@
 /* Write samples to the outFile. */
 static void writeSamplesToFile(char* fileName, int sampleRate, short* samples, int numSamples) {
   waveFile outFile = openOutputWaveFile(fileName, sampleRate, 1);
+  int written;
 
-  assert(writeToWaveFile(outFile, samples, numSamples));
+  assert(outFile != NULL);
+  written = writeToWaveFile(outFile, samples, numSamples);
+  assert(written);
   closeWaveFile(outFile);
 }
 

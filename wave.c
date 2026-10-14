@@ -154,8 +154,8 @@ static void writeHeader(waveFile file, int sampleRate, int numChannels) {
   writeShort(file,
              numChannels);    /* 22 - mono or stereo? 1 or 2?  (or 5 or ???) */
   writeInt(file, sampleRate); /* 24 - samples per second (numbers per second) */
-  writeInt(file, sampleRate * 2); /* 28 - bytes per second */
-  writeShort(file, 2); /* 32 - # of bytes in one sample, for all channels */
+  writeInt(file, sampleRate * 2 * numChannels); /* 28 - bytes per second */
+  writeShort(file, 2 * numChannels); /* 32 - # of bytes in one frame */
   writeShort(
       file, 16); /* 34 - how many bits in a sample(number)?  usually 16 or 24 */
   writeString(file, "data"); /* 36 - data */
@@ -248,6 +248,10 @@ waveFile openInputWaveFile(const char* fileName, int* sampleRate, int* numChanne
     return NULL;
   }
   file = (waveFile)calloc(1, sizeof(struct waveFileStruct));
+  if (file == NULL) {
+    fclose(soundFile);
+    return NULL;
+  }
   file->soundFile = soundFile;
   file->isInput = 1;
   if (!readHeader(file)) {
@@ -270,6 +274,10 @@ waveFile openOutputWaveFile(const char* fileName, int sampleRate, int numChannel
     return NULL;
   }
   file = (waveFile)calloc(1, sizeof(struct waveFileStruct));
+  if (file == NULL) {
+    fclose(soundFile);
+    return NULL;
+  }
   file->soundFile = soundFile;
   file->sampleRate = sampleRate;
   file->numChannels = numChannels;
