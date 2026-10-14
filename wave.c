@@ -272,7 +272,15 @@ waveFile openInputWaveFile(const char* fileName, int* sampleRate, int* numChanne
  */
 waveFile openOutputWaveFile(const char* fileName, int sampleRate, int numChannels) {
   waveFile file;
-  FILE* soundFile = fopen(fileName, "wb");
+  FILE* soundFile;
+
+  if (sampleRate <= 0 || numChannels <= 0 ||
+      sampleRate > INT_MAX / 2 / numChannels) {
+    fprintf(stderr, "Unsupported sample rate %d with %d channels\n",
+            sampleRate, numChannels);
+    return NULL;
+  }
+  soundFile = fopen(fileName, "wb");
 
   if (soundFile == NULL) {
     fprintf(stderr, "Unable to open wave file %s for writing\n", fileName);

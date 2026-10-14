@@ -49,6 +49,6 @@ Testing
 
 make test runs the unit tests.  For a sanitized run:
 
-    make CC=clang CFLAGS="-Wall -Werror -g -fsanitize=address,undefined" test
+    make -B CC=clang CFLAGS="-Wall -Werror -g -fsanitize=address,undefined" test
 
 make fuzz builds a libFuzzer harness (clang required).
