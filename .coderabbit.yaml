@@ -1,0 +1,14 @@
+language: en-US
+reviews:
+  profile: chill
+  path_filters:
+    - "!.idea/**"
+    - "!.serena/**"
+    - "!*.iml"
+    - "!**/*.wav"
+    - "!**/*.gcov"
+  path_instructions:
+    - path: "sonic.c"
+      instructions: "C89 (-ansi). Flag negative left shifts, int overflow in FIR/overlap-add sums, and unchecked narrowing to short."
+    - path: "tests/**"
+      instructions: "Tests must stay clean under ASan/UBSan with -Wall -Werror."

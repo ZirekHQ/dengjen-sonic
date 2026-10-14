@@ -176,9 +176,14 @@ static void* sonicRealloc(void* p, int oldNum, int newNum, int size) {
   return newBuffer;
 }
 
-/* Reset memoryBufferPos to 0.  We asssume all data is freed at the same time.
- */
-static void sonicFree(void* p) { memoryBufferPos = 0; }
+/* Freeing the stream struct, which sits at the start of memoryBuffer, resets
+   the buffer to empty.  Freeing anything else is a no-op: the stream's buffers
+   are released together by freeStreamBuffers. */
+static void sonicFree(void* p) {
+  if (p == (void*)memoryBuffer) {
+    memoryBufferPos = 0;
+  }
+}
 
 #endif
 
@@ -337,16 +342,27 @@ void sonicSetVolume(sonicStream stream, float volume) {
 static void freeStreamBuffers(sonicStream stream) {
   if (stream->inputBuffer != NULL) {
     sonicFree(stream->inputBuffer);
+    stream->inputBuffer = NULL;
   }
   if (stream->outputBuffer != NULL) {
     sonicFree(stream->outputBuffer);
+    stream->outputBuffer = NULL;
   }
   if (stream->pitchBuffer != NULL) {
     sonicFree(stream->pitchBuffer);
+    stream->pitchBuffer = NULL;
   }
   if (stream->downSampleBuffer != NULL) {
     sonicFree(stream->downSampleBuffer);
+    stream->downSampleBuffer = NULL;
   }
+  stream->numInputSamples = 0;
+  stream->numOutputSamples = 0;
+  stream->numPitchSamples = 0;
+#ifdef SONIC_NO_MALLOC
+  /* Keep the stream struct, which was the first allocation. */
+  memoryBufferPos = sizeof(struct sonicStreamStruct);
+#endif
 }
 
 /* Destroy the sonic stream. */
@@ -382,7 +398,7 @@ static int allocateStreamBuffers(sonicStream stream, int sampleRate,
   stream->inputBuffer =
       (short*)sonicCalloc(stream->inputBufferSize, sizeof(short) * numChannels);
   if (stream->inputBuffer == NULL) {
-    sonicDestroyStream(stream);
+    freeStreamBuffers(stream);
     return 0;
   }
   /* Allocate 25% more than needed so we hopefully won't grow. */
@@ -390,7 +406,7 @@ static int allocateStreamBuffers(sonicStream stream, int sampleRate,
   stream->outputBuffer = (short*)sonicCalloc(stream->outputBufferSize,
                                              sizeof(short) * numChannels);
   if (stream->outputBuffer == NULL) {
-    sonicDestroyStream(stream);
+    freeStreamBuffers(stream);
     return 0;
   }
   /* Allocate 25% more than needed so we hopefully won't grow. */
@@ -398,14 +414,14 @@ static int allocateStreamBuffers(sonicStream stream, int sampleRate,
   stream->pitchBuffer =
       (short*)sonicCalloc(stream->pitchBufferSize, sizeof(short) * numChannels);
   if (stream->pitchBuffer == NULL) {
-    sonicDestroyStream(stream);
+    freeStreamBuffers(stream);
     return 0;
   }
   int downSampleBufferSize = maxRequired;
   stream->downSampleBuffer =
       (short*)sonicCalloc(downSampleBufferSize, sizeof(short));
   if (stream->downSampleBuffer == NULL) {
-    sonicDestroyStream(stream);
+    freeStreamBuffers(stream);
     return 0;
   }
   stream->sampleRate = sampleRate;
@@ -417,7 +433,27 @@ static int allocateStreamBuffers(sonicStream stream, int sampleRate,
   stream->maxPeriod = maxPeriod;
   stream->maxRequired = maxRequired;
   stream->prevPeriod = 0;
+  stream->numInputSamples = 0;
+  stream->numOutputSamples = 0;
+  stream->numPitchSamples = 0;
+  stream->inputPlayTime = 0.0f;
+  stream->timeError = 0.0f;
+  stream->remainingInputToCopy = 0;
   return 1;
+}
+
+/* Reallocate the buffers for new parameters.  On failure, fall back to the old
+   parameters; if that also fails the stream holds no buffers and rejects
+   writes. */
+static void resizeStreamBuffers(sonicStream stream, int sampleRate,
+                                int numChannels) {
+  int oldSampleRate = stream->sampleRate;
+  int oldNumChannels = stream->numChannels;
+
+  freeStreamBuffers(stream);
+  if (!allocateStreamBuffers(stream, sampleRate, numChannels)) {
+    allocateStreamBuffers(stream, oldSampleRate, oldNumChannels);
+  }
 }
 
 /* Create a sonic stream.  Return NULL only if we are out of memory and cannot
@@ -432,6 +468,7 @@ sonicStream sonicCreateStream(int sampleRate, int numChannels) {
     return NULL;
   }
   if (!allocateStreamBuffers(stream, sampleRate, numChannels)) {
+    sonicFree(stream);
     return NULL;
   }
   stream->speed = 1.0f;
@@ -451,8 +488,7 @@ int sonicGetSampleRate(sonicStream stream) { return stream->sampleRate; }
    stream to be lost. */
 void sonicSetSampleRate(sonicStream stream, int sampleRate) {
   sampleRate = CLAMP(sampleRate, SONIC_MIN_SAMPLE_RATE, SONIC_MAX_SAMPLE_RATE);
-  freeStreamBuffers(stream);
-  allocateStreamBuffers(stream, sampleRate, stream->numChannels);
+  resizeStreamBuffers(stream, sampleRate, stream->numChannels);
 }
 
 /* Get the number of channels. */
@@ -462,14 +498,16 @@ int sonicGetNumChannels(sonicStream stream) { return stream->numChannels; }
    stream to be lost. */
 void sonicSetNumChannels(sonicStream stream, int numChannels) {
   numChannels = CLAMP(numChannels, SONIC_MIN_CHANNELS, SONIC_MAX_CHANNELS);
-  freeStreamBuffers(stream);
-  allocateStreamBuffers(stream, stream->sampleRate, numChannels);
+  resizeStreamBuffers(stream, stream->sampleRate, numChannels);
 }
 
 /* Enlarge the output buffer if needed. */
 static int enlargeOutputBufferIfNeeded(sonicStream stream, int numSamples) {
   int outputBufferSize = stream->outputBufferSize;
 
+  if (stream->outputBuffer == NULL) {
+    return 0;
+  }
   if (stream->numOutputSamples + numSamples > outputBufferSize) {
     stream->outputBufferSize += (outputBufferSize >> 1) + numSamples;
     stream->outputBuffer = (short*)sonicRealloc(
@@ -486,6 +524,9 @@ static int enlargeOutputBufferIfNeeded(sonicStream stream, int numSamples) {
 static int enlargeInputBufferIfNeeded(sonicStream stream, int numSamples) {
   int inputBufferSize = stream->inputBufferSize;
 
+  if (stream->inputBuffer == NULL) {
+    return 0;
+  }
   if (stream->numInputSamples + numSamples > inputBufferSize) {
     stream->inputBufferSize += (inputBufferSize >> 1) + numSamples;
     stream->inputBuffer = (short*)sonicRealloc(
@@ -522,7 +563,9 @@ static int addFloatSamplesToInputBuffer(sonicStream stream,
   }
   buffer = stream->inputBuffer + stream->numInputSamples * stream->numChannels;
   while (count--) {
-    *buffer++ = (*samples++) * 32767.0f;
+    float sample = *samples++;
+    sample = CLAMP(sample, -1.0f, 1.0f);
+    *buffer++ = (short)(sample * 32767.0f);
   }
   updateNumInputSamples(stream, numSamples);
   return 1;
@@ -558,7 +601,7 @@ static int addUnsignedCharSamplesToInputBuffer(sonicStream stream,
   }
   buffer = stream->inputBuffer + stream->numInputSamples * stream->numChannels;
   while (count--) {
-    *buffer++ = (*samples++ - 128) << 8;
+    *buffer++ = (short)((*samples++ - 128) * 256);
   }
   updateNumInputSamples(stream, numSamples);
   return 1;
@@ -939,6 +982,9 @@ static int moveNewSamplesToPitchBuffer(sonicStream stream,
     stream->pitchBuffer = (short*)sonicRealloc(
         stream->pitchBuffer, pitchBufferSize, stream->pitchBufferSize,
         sizeof(short) * numChannels);
+    if (stream->pitchBuffer == NULL) {
+      return 0;
+    }
   }
   memcpy(stream->pitchBuffer + stream->numPitchSamples * numChannels,
          stream->outputBuffer + originalNumOutputSamples * numChannels,
@@ -1027,40 +1073,32 @@ static int findSincCoefficient(int i, int ratio, int width) {
 }
 
 /* Return 1 if value >= 0, else -1.  This represents the sign of value. */
-static int getSign(int value) { return value >= 0 ? 1 : -1; }
 
 /* Interpolate the new output sample. */
 static short interpolate(sonicStream stream, short* in, int oldSampleRate,
                          int newSampleRate) {
   /* Compute N-point sinc FIR-filter here.  Clip rather than overflow. */
   int i;
-  int total = 0;
+  double total = 0.0;
   int position = stream->newRatePosition * oldSampleRate;
   int leftPosition = stream->oldRatePosition * newSampleRate;
   int rightPosition = (stream->oldRatePosition + 1) * newSampleRate;
   int ratio = rightPosition - position - 1;
   int width = rightPosition - leftPosition;
-  int weight, value;
-  int oldSign;
-  int overflowCount = 0;
+  int weight;
 
   for (i = 0; i < SINC_FILTER_POINTS; i++) {
     weight = findSincCoefficient(i, ratio, width);
-    value = in[i * stream->numChannels] * weight;
-    oldSign = getSign(total);
-    total += value;
-    if (oldSign != getSign(total) && getSign(value) == oldSign) {
-      /* We must have overflowed.  This can happen with a sinc filter. */
-      overflowCount += oldSign;
-    }
+    total += (double)in[i * stream->numChannels] * weight;
   }
-  /* It is better to clip than to wrap if there was a overflow. */
-  if (overflowCount > 0) {
+  total = floor(total / 65536.0);
+  /* It is better to clip than to wrap. */
+  if (total > SHRT_MAX) {
     return SHRT_MAX;
-  } else if (overflowCount < 0) {
+  } else if (total < SHRT_MIN) {
     return SHRT_MIN;
   }
-  return total >> 16;
+  return (short)total;
 }
 
 /* Change the rate.  Interpolate with a sinc FIR filter using a Hann window. */
@@ -1125,7 +1163,7 @@ static int skipPitchPeriod(sonicStream stream, short* samples, float speed,
     newSamples = period;
   }
   if (!enlargeOutputBufferIfNeeded(stream, newSamples)) {
-    return 0;
+    return -1;
   }
   overlapAdd(newSamples, numChannels,
              stream->outputBuffer + stream->numOutputSamples * numChannels,
@@ -1146,8 +1184,11 @@ static int insertPitchPeriod(sonicStream stream, short* samples, float speed,
   } else {
     newSamples = period;
   }
+  if (newSamples < 1) {
+    newSamples = 1; /* Guarantees changeSpeed advances through the input. */
+  }
   if (!enlargeOutputBufferIfNeeded(stream, period + newSamples)) {
-    return 0;
+    return -1;
   }
   out = stream->outputBuffer + stream->numOutputSamples * numChannels;
   memcpy(out, samples, period * sizeof(short) * numChannels);
@@ -1228,7 +1269,7 @@ static int changeSpeed(sonicStream stream, float speed) {
                 newSamples * stream->inputPlayTime / stream->numInputSamples;
           }
         }
-      if (newSamples == 0) {
+      if (newSamples < 0) {
         return 0; /* Failed to resize output buffer */
       }
     }
@@ -1251,7 +1292,9 @@ static int processStreamInput(sonicStream stream) {
   localSpeed =
       stream->numInputSamples * stream->samplePeriod / stream->inputPlayTime;
   if (localSpeed > 1.00001 || localSpeed < 0.99999) {
-    changeSpeed(stream, localSpeed);
+    if (!changeSpeed(stream, localSpeed)) {
+      return 0;
+    }
   } else {
     if (!copyInputToOutput(stream, stream->numInputSamples)) {
       return 0;
@@ -1317,6 +1360,9 @@ int sonicChangeFloatSpeed(float* samples, int numSamples, float speed,
                           int useChordPitch, int sampleRate, int numChannels) {
   sonicStream stream = sonicCreateStream(sampleRate, numChannels);
 
+  if (stream == NULL) {
+    return 0;
+  }
   sonicSetSpeed(stream, speed);
   sonicSetPitch(stream, pitch);
   sonicSetRate(stream, rate);
@@ -1337,6 +1383,9 @@ int sonicChangeShortSpeed(short* samples, int numSamples, float speed,
                           int useChordPitch, int sampleRate, int numChannels) {
   sonicStream stream = sonicCreateStream(sampleRate, numChannels);
 
+  if (stream == NULL) {
+    return 0;
+  }
   sonicSetSpeed(stream, speed);
   sonicSetPitch(stream, pitch);
   sonicSetRate(stream, rate);

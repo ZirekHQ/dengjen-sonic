@@ -29,6 +29,8 @@ int main(int argc, char** argv) {
   assert(sonicTestChordPitchAppliesRate());
   assert(sonicTestSetPitchRejectsNaN());
   assert(sonicTestChordPitchReturnToUnityDrainsBuffer());
+  assert(sonicTestSetSampleRateDropsBufferedSamples());
+  assert(sonicTestExtremeRatiosTerminate());
   printf("All tests passed.\n");
   return 0;
 }
