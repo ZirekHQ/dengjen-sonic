@@ -19,8 +19,13 @@ cc_library(
 cc_test(
     name = "sonic_unit_test",
     srcs = [
+        "chord_pitch_test.c",
         "input_clamping_test.c",
+        "pitch_position_test.c",
+        "slowdown_flush_test.c",
+        "sonic_api_test.c",
         "sonic_unit_test.cc",
+        "stream_resize_test.c",
         "tests.h",
     ],
     copts = [

@@ -56,7 +56,14 @@ static void scaleSamples(short *samples, int numSamples, float volume) {
 }
 
 /* Set the speed of the stream. */
-void sonicSetSpeed(float speed) { sonicStream.speed = speed; }
+void sonicSetSpeed(float speed) {
+  if (!(speed >= 0.05f)) {
+    speed = 0.05f;
+  } else if (speed > 20.0f) {
+    speed = 20.0f;
+  }
+  sonicStream.speed = speed;
+}
 
 /* Set the scaling factor of the stream. */
 void sonicSetVolume(float volume) {

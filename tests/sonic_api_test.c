@@ -59,18 +59,17 @@ int sonicTestFlush(void) {
     sonicStream stream = sonicCreateStream(SAMPLE_RATE, 1);
     short samples[100] = {0};
 
-    sonicWriteShortToStream(stream, samples, 100);
-    sonicFlushStream(stream);
-    
-    /* Should have some samples available after flush */
-    if (sonicSamplesAvailable(stream) == 0) {
-        /* Actually, it might be 0 if input was silence and speed was high? 
-           But with 1.0 speed/pitch/rate, we expect output. */
-        /* Let's check if we can read something */
+    int ok;
+
+    if (stream == NULL) {
+        return 0;
     }
-    
+    ok = sonicWriteShortToStream(stream, samples, 100);
+    sonicFlushStream(stream);
+    /* At unit speed, flush must leave exactly the 100 written samples. */
+    ok = ok && sonicSamplesAvailable(stream) == 100;
     sonicDestroyStream(stream);
-    return 1;
+    return ok;
 }
 
 int sonicTestSimpleProcessing(void) {
@@ -81,15 +80,15 @@ int sonicTestSimpleProcessing(void) {
     
     for(i=0; i<100; i++) input[i] = i * 100;
     
-    sonicWriteShortToStream(stream, input, 100);
-    
-    /* With 1.0 speed, we might not get output immediately due to buffering */
-    /* But let's try to read */
-    sonicReadShortFromStream(stream, output, 200);
-    
+    int total, ok;
+
+    if (stream == NULL) {
+        return 0;
+    }
+    ok = sonicWriteShortToStream(stream, input, 100);
+    total = sonicReadShortFromStream(stream, output, 200);
     sonicFlushStream(stream);
-    sonicReadShortFromStream(stream, output, 200);
-    
+    total += sonicReadShortFromStream(stream, output + total, 200 - total);
     sonicDestroyStream(stream);
-    return 1;
+    return ok && total == 100;
 }

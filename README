@@ -43,3 +43,12 @@ Eloquence TTS engine.  The upgrade is in both the C and Java versions.
 
 Author: Bill Cox
 email: waywardgeek@gmail.com
+
+Testing
+-------
+
+make test runs the unit tests.  For a sanitized run:
+
+    make -B CC=clang CFLAGS="-Wall -Werror -g -fsanitize=address,undefined" test
+
+make fuzz builds a libFuzzer harness (clang required).
