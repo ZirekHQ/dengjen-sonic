@@ -21,7 +21,9 @@ struct waveFileStruct {
   int numChannels;
   int sampleRate;
   FILE* soundFile;
-  int bytesWritten; /* The number of bytes written so far, including header */
+  unsigned long bytesWritten; /* Bytes written so far, including header */
+  int dataBounded; /* 1 if dataRemaining is the declared data chunk size */
+  unsigned long dataRemaining; /* Input bytes left in the data chunk */
   int failed;
   int isInput;
 };
@@ -164,13 +166,14 @@ static void writeHeader(waveFile file, int sampleRate, int numChannels) {
 
 /* Read the header of the wave file. */
 static int readHeader(waveFile file) {
-  int data;
+  int data, chunkSize, size;
+  char chunk[5];
 
   expectString(file, "RIFF");
   data = readInt(file);          /* 04 - how big is the rest of this file? */
   expectString(file, "WAVE");    /* 08 - WAVE */
   expectString(file, "fmt ");    /* 12 - fmt */
-  int chunkSize = readInt(file); /* 16 or 18 - size of this chunk */
+  chunkSize = readInt(file); /* 16 or 18 - size of this chunk */
   if (chunkSize != 16 && chunkSize != 18) {
     fprintf(stderr, "Only basic wave files are supported\n");
     return 0;
@@ -206,17 +209,19 @@ static int readHeader(waveFile file) {
   }
 
   /* Read and discard chunks until we find the "data" chunk or fail */
-  char chunk[5];
   chunk[4] = 0;
 
   while (1) {
     readExactBytes(file, chunk, 4);  /* chunk id */
-    int size = readInt(file);        /* how big is this data chunk */
+    size = readInt(file);            /* how big is this data chunk */
     if (file->failed) {
       fprintf(stderr, "No data chunk found in input file\n");
       return 0;
     }
     if (strcmp(chunk, "data") == 0) {
+      /* A size of INT_MAX or more means a streamed file of unknown length. */
+      file->dataBounded = size < INT_MAX;
+      file->dataRemaining = size;
       return 1;
     }
     if (size < 0 || fseek(file->soundFile, size, SEEK_CUR) != 0) {
@@ -290,6 +295,11 @@ waveFile openOutputWaveFile(const char* fileName, int sampleRate, int numChannel
 }
 
 /* Close the sound file. */
+/* RIFF sizes are 32-bit; saturate rather than wrap on huge outputs. */
+static unsigned long clampRiffSize(unsigned long size) {
+  return size > 0xFFFFFFFFUL ? 0xFFFFFFFFUL : size;
+}
+
 int closeWaveFile(waveFile file) {
   FILE* soundFile = file->soundFile;
   int passed = 1;
@@ -300,7 +310,7 @@ int closeWaveFile(waveFile file) {
       passed = 0;
     } else {
       /* Now update the file to have the correct size. */
-      writeInt(file, file->bytesWritten - 8);
+      writeInt(file, (int)clampRiffSize(file->bytesWritten - 8));
       if (file->failed) {
         fprintf(stderr, "Failed to write wave file size.\n");
         passed = 0;
@@ -310,7 +320,7 @@ int closeWaveFile(waveFile file) {
         passed = 0;
       } else {
         /* Now update the file to have the correct size. */
-        writeInt(file, file->bytesWritten - 48);
+        writeInt(file, (int)clampRiffSize(file->bytesWritten - 48));
         if (file->failed) {
           fprintf(stderr, "Failed to write wave file size.\n");
           passed = 0;
@@ -325,7 +335,7 @@ int closeWaveFile(waveFile file) {
 /* Read from the wave file.  Return the number of samples read.
    numSamples and maxSamples are the number of **multi-channel** samples */
 int readFromWaveFile(waveFile file, short* buffer, int maxSamples) {
-  int i, bytesRead, samplesRead;
+  int i, bytesRead, samplesRead, wanted;
   int bytePos = 0;
   unsigned char bytes[WAVE_BUF_LEN];
   short sample;
@@ -333,7 +343,15 @@ int readFromWaveFile(waveFile file, short* buffer, int maxSamples) {
   if (maxSamples * file->numChannels * 2 > WAVE_BUF_LEN) {
     maxSamples = WAVE_BUF_LEN / (file->numChannels * 2);
   }
-  bytesRead = readBytes(file, bytes, maxSamples * file->numChannels * 2);
+  wanted = maxSamples * file->numChannels * 2;
+
+  if (file->dataBounded && (unsigned long)wanted > file->dataRemaining) {
+    wanted = (int)file->dataRemaining;
+  }
+  bytesRead = readBytes(file, bytes, wanted);
+  if (file->dataBounded) {
+    file->dataRemaining -= bytesRead;
+  }
   samplesRead = bytesRead / (file->numChannels * 2);
   for (i = 0; i < samplesRead * file->numChannels; i++) {
     sample = bytes[bytePos++];

@@ -391,6 +391,7 @@ static int allocateStreamBuffers(sonicStream stream, int sampleRate,
   int minPeriod = sampleRate / SONIC_MAX_PITCH;
   int maxPeriod = sampleRate / SONIC_MIN_PITCH;
   int maxRequired = 2 * maxPeriod;
+  int downSampleBufferSize = maxRequired;
 
   /* Allocate 25% more than needed so we hopefully won't grow. */
   stream->inputBufferSize = maxRequired + (maxRequired >> 2);
@@ -417,7 +418,6 @@ static int allocateStreamBuffers(sonicStream stream, int sampleRate,
     freeStreamBuffers(stream);
     return 0;
   }
-  int downSampleBufferSize = maxRequired;
   stream->downSampleBuffer =
       (short*)sonicCalloc(downSampleBufferSize, sizeof(short));
   if (stream->downSampleBuffer == NULL) {
@@ -692,7 +692,7 @@ int sonicReadShortFromStream(sonicStream stream, short* samples,
   int numSamples = stream->numOutputSamples;
   int remainingSamples = 0;
 
-  if (numSamples == 0) {
+  if (numSamples == 0 || maxSamples <= 0) {
     return 0;
   }
   if (numSamples > maxSamples) {

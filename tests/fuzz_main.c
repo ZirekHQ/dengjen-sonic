@@ -13,7 +13,7 @@
 
 /* Fuzzer entry point */
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-    if (Size < 4) return 0;
+    if (Size < 7) return 0;
 
     /* Use first few bytes to configure stream */
     int sampleRate = 8000 + (Data[0] * 100); /* 8000 - 33500 */
@@ -24,17 +24,29 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
 
     float speed = 0.5f + (Data[2] / 64.0f); /* ~0.5 - 4.5 */
     float pitch = 0.5f + (Data[3] / 64.0f);
+    float rate = 0.5f + (Data[4] / 64.0f);
+    float volume = Data[5] / 64.0f;
     
     sonicSetSpeed(stream, speed);
     sonicSetPitch(stream, pitch);
+    sonicSetRate(stream, rate);
+    sonicSetVolume(stream, volume);
+    sonicSetChordPitch(stream, Data[6] & 1);
     
-    /* Feed remaining data as samples */
-    /* We treat the uint8_t data as short samples (casting) */
-    size_t remaining = Size - 4;
+    /* Feed remaining data as samples.  Copy into a short array so the cast
+       cannot misalign. */
+    size_t remaining = Size - 7;
     if (remaining > 0) {
         int numSamples = remaining / (sizeof(short) * numChannels);
         if (numSamples > 0) {
-            sonicWriteShortToStream(stream, (short*)(Data + 4), numSamples);
+            short* samples = (short*)malloc(numSamples * numChannels * sizeof(short));
+            if (samples == NULL) {
+                sonicDestroyStream(stream);
+                return 0;
+            }
+            memcpy(samples, Data + 7, numSamples * numChannels * sizeof(short));
+            sonicWriteShortToStream(stream, samples, numSamples);
+            free(samples);
             
             /* Read out some data to exercise processing. maxSamples in
                sonicReadShortFromStream is a per-channel count, so the cap

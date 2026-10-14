@@ -17,6 +17,8 @@
 #include "tests.h"
 
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /* Just verify that we clamp to expected input values. */
 int sonicTestInputClamping(void) {
@@ -92,7 +94,10 @@ static void processSomeSamples(sonicStream stream, const short* samples, int num
   /* Write all at once. */
   int written = sonicWriteShortToStream(stream, samples, numSamples);
 
-  assert(written);
+  if (!written) {
+    fprintf(stderr, "sonicWriteShortToStream failed\n");
+    abort();
+  }
   while ((samplesRead = sonicReadShortFromStream(stream, readBuf, READ_BUF_LEN)) != 0);
 }
 
