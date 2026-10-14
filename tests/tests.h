@@ -26,6 +26,8 @@ int sonicTestChordPitchPreservesConstantSignal(void);
 int sonicTestChordPitchAppliesRate(void);
 int sonicTestSetPitchRejectsNaN(void);
 int sonicTestChordPitchReturnToUnityDrainsBuffer(void);
+int sonicTestSetSampleRateDropsBufferedSamples(void);
+int sonicTestExtremeRatiosTerminate(void);
 
 #ifdef __cplusplus
 }

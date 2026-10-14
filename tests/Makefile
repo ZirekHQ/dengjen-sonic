@@ -21,7 +21,8 @@ sonic_api_test.c \
 wave_channel_validation_test.c \
 chord_pitch_test.c \
 pitch_position_test.c \
-slowdown_flush_test.c
+slowdown_flush_test.c \
+stream_resize_test.c
 
 CC=gcc
 
